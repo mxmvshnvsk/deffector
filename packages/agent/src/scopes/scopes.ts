@@ -1,5 +1,6 @@
 import type { ScopeInfo } from '@deffector/protocol';
 import { asEffectorScope, type EffectorScope, type Scope } from '../effector';
+import { createCollectionWatcher, weakBox, type WeakBox } from '../platform';
 
 /** How an adapter renders the app with another scope. */
 export type ScopeSwitcher = (scope: EffectorScope) => void;
@@ -7,7 +8,8 @@ export type ScopeSwitcher = (scope: EffectorScope) => void;
 interface ScopeRecord {
   id: string;
   name: string;
-  scope: Scope | null;
+  /** weak: a server forks a scope per request, and the agent must not outlive them. null = global */
+  scope: WeakBox<Scope> | null;
   switcher?: ScopeSwitcher;
   branch?: ScopeInfo['branch'];
 }
@@ -27,11 +29,19 @@ const DEFAULT_NAME = /^scope \d+$/;
  * at runtime or registered explicitly by adapters (`DeffectorProvider`).
  * Adapters also provide a switcher: a way to render the app with another scope,
  * which is what time travel and replay use.
+ *
+ * A record holds its scope weakly. On a server every request forks its own
+ * scope, and a strong reference here would keep that request's whole state
+ * alive for as long as the process runs. Once a scope is collected its record
+ * is dropped too, unless it is the live or viewed one or carries an adapter's
+ * switcher — those belong to the app root and outlive any single scope.
  */
 export class Scopes {
   private readonly idsByScope = new WeakMap<Scope, string>();
 
   private readonly records = new Map<string, ScopeRecord>();
+
+  private readonly watchCollection = createCollectionWatcher<string>((id) => this.forget(id));
 
   private createdCount = 0;
 
@@ -49,6 +59,19 @@ export class Scopes {
     this.records.set(GLOBAL_ID, { id: GLOBAL_ID, name: 'global', scope: null });
   }
 
+  /** The scope of a record, or null once it is global or collected. */
+  private static scopeOf(record: ScopeRecord | undefined): Scope | null {
+    return record?.scope?.deref() ?? null;
+  }
+
+  /** A collected scope: keep the record only while something still points at it. */
+  private forget(id: string) {
+    const record = this.records.get(id);
+    if (!record || record.switcher || this.liveId === id || this.viewId === id) return;
+    this.records.delete(id);
+    this.hasUnsentChanges = true;
+  }
+
   idOf(scope: Scope | null | undefined): string {
     if (!scope) return GLOBAL_ID;
     const known = this.idsByScope.get(scope);
@@ -56,7 +79,8 @@ export class Scopes {
     this.createdCount += 1;
     const id = `s${this.createdCount}`;
     this.idsByScope.set(scope, id);
-    this.records.set(id, { id, name: `scope ${this.createdCount}`, scope });
+    this.records.set(id, { id, name: `scope ${this.createdCount}`, scope: weakBox(scope) });
+    this.watchCollection(scope, id);
     this.isForkUsed = true;
     if (!this.liveId) {
       this.liveId = id;
@@ -108,7 +132,7 @@ export class Scopes {
 
   get(id: string | null): Scope | null {
     if (id === null) return null;
-    return this.records.get(id)?.scope ?? null;
+    return Scopes.scopeOf(this.records.get(id));
   }
 
   nameOf(id: string): string {
@@ -122,9 +146,10 @@ export class Scopes {
   /** Render the app with the given scope (time travel / replay / return to present). */
   show(id: string): boolean {
     const target = this.records.get(id);
+    const scope = Scopes.scopeOf(target);
     const switcher = this.records.get(this.viewId || '')?.switcher || target?.switcher;
-    if (!target || !target.scope || !switcher) return false;
-    switcher(asEffectorScope(target.scope));
+    if (!target || !scope || !switcher) return false;
+    switcher(asEffectorScope(scope));
     // the switcher belongs to the app root, every scope rendered through it shares it
     target.switcher = switcher;
     this.viewId = id;
@@ -143,7 +168,8 @@ export class Scopes {
   knownScopes(): { id: string; scope: Scope }[] {
     const known: { id: string; scope: Scope }[] = [];
     for (const record of this.records.values()) {
-      if (record.scope) known.push({ id: record.id, scope: record.scope });
+      const scope = Scopes.scopeOf(record);
+      if (scope) known.push({ id: record.id, scope });
     }
     return known;
   }
@@ -174,7 +200,8 @@ export class Scopes {
         view: (this.viewId ?? GLOBAL_ID) === record.id,
         live: (this.liveId ?? GLOBAL_ID) === record.id,
         branch: record.branch,
-        switchable: !!record.switcher,
+        // a collected scope cannot be rendered again, whatever switcher the record kept
+        switchable: !!record.switcher && !!Scopes.scopeOf(record),
       });
     }
     return infos;
