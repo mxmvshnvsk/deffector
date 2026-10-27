@@ -106,6 +106,20 @@ export class Scopes {
     return id;
   }
 
+  /**
+   * An adapter's provider went away: its switcher closes over a tree that no
+   * longer exists, so it must not stay behind to be reported by `hasSwitcher`
+   * or called by `show`. Looked up without `idOf`, which would mint a record
+   * for a scope that was never registered.
+   */
+  unregister(scope: Scope) {
+    const id = this.idsByScope.get(scope);
+    const record = id === undefined ? undefined : this.records.get(id);
+    if (!record?.switcher) return;
+    delete record.switcher;
+    this.hasUnsentChanges = true;
+  }
+
   /** a name from fork({ name }) unless the app or an adapter gave one */
   nameIfDefault(scope: Scope, name: string) {
     const record = this.records.get(this.idOf(scope))!;

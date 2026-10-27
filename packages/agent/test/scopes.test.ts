@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { allSettled, createEvent, createStore, fork } from 'effector';
 import { createMemoryTransportPair } from '@deffector/protocol';
 import { Agent } from '../src/agent';
+import { asInternalScope } from '../src/effector';
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
@@ -76,5 +77,60 @@ describe('scope records', () => {
     const afterCollection = agent.scopes.list().filter((item) => item.kind === 'scope').length;
     // the first scope seen becomes the live one and is held on purpose; the rest must go
     expect(afterCollection).toBeLessThanOrEqual(2);
+  });
+
+  it('drops the switcher when the adapter tears its registration down', async () => {
+    const { agent, flush } = setup();
+    const scope = fork();
+    await allSettled(requestStarted, { scope, params: 1 });
+    await flush();
+
+    const teardown = agent.registerScope(scope, { name: 'client', switcher: () => {} });
+    const { id } = agent.scopes.list().find((item) => item.name === 'client')!;
+    expect(agent.scopes.hasSwitcher()).toBe(true);
+    expect(agent.scopes.list().find((item) => item.id === id)!.switchable).toBe(true);
+    expect(agent.timeline.strategy).toBe('fork');
+
+    teardown();
+
+    expect(agent.scopes.hasSwitcher()).toBe(false);
+    expect(agent.scopes.list().find((item) => item.id === id)!.switchable).toBe(false);
+    expect(agent.timeline.strategy).toBe('in-place');
+    // the scope itself is still known: only the way to render it is gone
+    expect(agent.scopes.get(id)).toBe(scope);
+  });
+
+  it('does not invent a record for a scope that was never registered', () => {
+    const { agent } = setup();
+    const before = agent.scopes.list().length;
+    agent.scopes.unregister(asInternalScope(fork()));
+    expect(agent.scopes.list().length).toBe(before);
+  });
+
+  it.runIf(collectGarbage)('releases a scope once its provider is gone', async () => {
+    const { agent, flush } = setup();
+    const teardowns: (() => void)[] = [];
+    for (let i = 0; i < 20; i++) {
+      const scope = fork();
+      // a provider mounted per route: registers a switcher, then unmounts
+      teardowns.push(agent.registerScope(scope, { name: `route ${i}`, switcher: () => {} }));
+      await allSettled(requestStarted, { scope, params: i });
+    }
+    await flush();
+    expect(agent.scopes.list().filter((item) => item.kind === 'scope').length).toBe(20);
+
+    for (const teardown of teardowns) teardown();
+    // the teardown closure holds the scope, the way React holds an effect's
+    // cleanup while it is mounted; dropping it is what unmounting does
+    teardowns.length = 0;
+    collectGarbage!();
+    await flush();
+    collectGarbage!();
+    await flush();
+
+    // without the teardown the switcher would keep every record alive
+    expect(agent.scopes.list().filter((item) => item.kind === 'scope').length).toBeLessThanOrEqual(
+      2,
+    );
   });
 });
