@@ -1,7 +1,7 @@
-import type { InspectorFn, Local, Stack } from '../effector';
+import { readScopeValue, type InspectorFn, type Local, type Scope, type Stack } from '../effector';
 import type { History, RawStep, RawTransaction } from '../history';
 import { now } from '../platform';
-import type { Registry } from '../registry';
+import type { Registry, UnitRecord } from '../registry';
 import type { Scopes } from '../scopes';
 import { TransactionFinalizer } from './finalize';
 import { RunawayGuard } from './runawayGuard';
@@ -76,7 +76,7 @@ export class Collector {
   constructor(
     private readonly registry: Registry,
     private readonly scopes: Scopes,
-    history: History,
+    private readonly history: History,
     private readonly hooks: CollectorHooks,
   ) {
     this.runawayGuard = new RunawayGuard(registry, () => this.elapsed(), this.onRunawayStopped);
@@ -139,8 +139,14 @@ export class Collector {
       this.registry.rename(node.id, `${effectName} handler`);
     }
     if (transaction.steps.length >= this.maxSteps) {
-      transaction.flags.truncated = true;
+      if (!transaction.flags.truncated) {
+        transaction.flags.truncated = true;
+        // no further step is recorded, so the child counts of what is already
+        // there are final: the stores left looking unchanged can be settled now
+        this.settleStoresAtLimit(transaction, stack.scope);
+      }
       this.stepLocations.set(stack, { transaction, index: -1 });
+      this.keepLateDelta(transaction, record, stack);
       return;
     }
     const op: string = node.meta.op;
@@ -174,6 +180,50 @@ export class Collector {
     this.stepLocations.set(stack, { transaction, index });
     this.resolveNesting(transaction, op, index);
     this.activeTransaction = transaction;
+  }
+
+  /**
+   * A store step is normally judged changed by whether it pushed children, and
+   * past `maxSteps` its children are never recorded — so it looks unchanged and
+   * contributes no delta. Time travel to the transaction then falls back to the
+   * live value, and once the deltas are folded into the base snapshot on
+   * eviction, every older transaction is wrong too.
+   *
+   * By the time the inspector runs, the store's seq has already committed or
+   * skipped the write, so the value in the scope is authoritative: it differs
+   * from the value the store held before exactly when the store changed. The
+   * kernel's own condition cannot be reproduced from `meta` (`skipVoid` is not
+   * exposed), hence the read rather than a comparison of `stack.value`.
+   */
+  private keepLateDelta(transaction: RawTransaction, record: UnitRecord, stack: Stack) {
+    const ref = record.stateRef;
+    if (!ref || !record.info.writable) return;
+    this.rememberLate(transaction, ref.id, readScopeValue(stack.scope, ref), stack.a);
+  }
+
+  /** Stores already recorded in a transaction that turned out to be truncated. */
+  private settleStoresAtLimit(transaction: RawTransaction, scope: Scope | null) {
+    for (const step of transaction.steps) {
+      if (!step.isWritable || !step.stateRefId || step.childCount > 0 || step.hasFailed) continue;
+      const ref = this.registry.unitsByStateRef.get(step.stateRefId)?.stateRef;
+      if (!ref) continue;
+      this.rememberLate(transaction, ref.id, readScopeValue(scope, ref), step.previousValue);
+    }
+  }
+
+  private rememberLate(
+    transaction: RawTransaction,
+    stateRefId: string,
+    committed: unknown,
+    previous: unknown,
+  ) {
+    if (committed === previous) return;
+    if (!transaction.previousValues.has(stateRefId)) {
+      transaction.previousValues.set(stateRefId, previous);
+    }
+    if (!transaction.lateDeltas) transaction.lateDeltas = new Map();
+    transaction.lateDeltas.set(stateRefId, committed);
+    this.history.rememberInitialValue(transaction.scopeId, stateRefId, previous);
   }
 
   private transactionOf(

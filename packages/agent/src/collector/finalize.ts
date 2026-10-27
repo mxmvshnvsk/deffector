@@ -41,6 +41,12 @@ export class TransactionFinalizer {
     transaction.isOpen = false;
     transaction.nestingCandidate = undefined;
     const changeCounts = settleStepStatuses(transaction, this.history);
+    // found past the step limit, so they are newer than anything settled above
+    if (transaction.lateDeltas) {
+      for (const [stateRefId, value] of transaction.lateDeltas) {
+        transaction.deltas.set(stateRefId, value);
+      }
+    }
     // a runaway cut by the emergency stop repeats everything: no double/stale analysis
     const isStopped = !!transaction.flags.stopped;
     if (!isStopped) {
