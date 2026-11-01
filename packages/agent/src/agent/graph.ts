@@ -30,14 +30,17 @@ function graphNodeOf(record: UnitRecord): GraphNode {
   };
 }
 
-/** Edges without duplicates and without self-loops. */
+/**
+ * Edges without duplicates. Self-loops are kept: a unit that feeds itself is the
+ * shortest runaway there is, and `findCycles` recognises it only if the edge is
+ * here. Collapsed groups drop their own `from === to` edges in `collapseGroups`.
+ */
 class EdgeList {
   readonly edges: GraphEdge[] = [];
 
   private readonly keys = new Set<string>();
 
   add(from: string, to: string, kind: GraphEdge['kind'], via?: string) {
-    if (from === to) return;
     const key = `${from}>${to}${kind}`;
     if (this.keys.has(key)) return;
     this.keys.add(key);

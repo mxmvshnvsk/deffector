@@ -64,6 +64,8 @@ export function layoutGraph(nodes: GraphViewNode[], edges: GraphViewEdge[]): Gra
   const parents = new Map<string, string[]>();
   for (const edge of edges) {
     if (edge.kind !== 'next' || !ids.has(edge.from) || !ids.has(edge.to)) continue;
+    // a self-loop is drawn on the node itself: it neither layers nor orders it
+    if (edge.from === edge.to) continue;
     incomingCount.set(edge.to, (incomingCount.get(edge.to) || 0) + 1);
     pushTo(outgoing, edge.from, edge.to);
     pushTo(parents, edge.to, edge.from);
