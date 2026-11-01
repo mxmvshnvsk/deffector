@@ -1,6 +1,6 @@
 {
   "name": "@deffector/standalone",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DevTools for effector outside a browser tab: the deffector panel for SSR servers, Node scripts, tests and React Native",
   "keywords": [
     "effector",

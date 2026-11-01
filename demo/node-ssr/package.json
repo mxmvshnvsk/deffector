@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@deffector-demo/shared": "0.0.0",
-    "@deffector/agent": "0.1.4",
+    "@deffector/agent": "0.1.5",
     "effector": "23.4.4"
   }
 }

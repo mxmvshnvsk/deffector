@@ -1,6 +1,6 @@
 {
   "name": "@deffector/agent",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DevTools for effector: every user action as one transaction, time travel, state injection, effect overrides and replayable traces. The agent that runs in your app.",
   "keywords": [
     "effector",
