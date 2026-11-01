@@ -3,20 +3,7 @@ import { useUnit } from 'effector-vue/composition';
 import * as model from '@deffector-demo/shared';
 import TextField from './TextField.vue';
 
-const form = useUnit({
-  terms: model.$terms,
-  termsToggled: model.termsToggled,
-  submit: model.submitPressed,
-  reset: model.formReset,
-  canSubmit: model.$canSubmit,
-  submitting: model.$submitting,
-  user: model.$user,
-  serverError: model.$serverError,
-  attempts: model.$attempts,
-  suggestions: model.$suggestions,
-  emailChanged: model.email.changed,
-  initials: model.$nameInitials,
-});
+const form = useUnit(model.$$signupForm);
 </script>
 
 <template>
@@ -28,7 +15,7 @@ const form = useUnit({
         v-for="suggestion in form.suggestions.value"
         :key="suggestion"
         type="button"
-        @click="form.emailChanged(suggestion)"
+        @click="form.onSuggestionPick(suggestion)"
       >
         {{ suggestion }}
       </button>
@@ -40,7 +27,7 @@ const form = useUnit({
         type="checkbox"
         data-testid="terms"
         :checked="form.terms.value"
-        @change="form.termsToggled()"
+        @change="form.onTermsToggle()"
       />
       I accept the terms</label
     >
@@ -49,11 +36,11 @@ const form = useUnit({
         type="button"
         data-testid="submit"
         :class="{ pri: form.canSubmit.value }"
-        @click="form.submit()"
+        @click="form.onSubmit()"
       >
         {{ form.submitting.value ? 'Sending…' : 'Create account' }}
       </button>
-      <button type="button" @click="form.reset()">Reset</button>
+      <button type="button" @click="form.onReset()">Reset</button>
       <span class="muted"
         >attempts: {{ form.attempts.value }} · initials: {{ form.initials.value || '—' }}</span
       >

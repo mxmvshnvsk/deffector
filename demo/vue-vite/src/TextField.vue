@@ -9,12 +9,7 @@ const props = defineProps<{
   field: FormField<string>;
   testId: string;
 }>();
-const { value, error, touched, changed } = useUnit({
-  value: props.field.$value,
-  error: props.field.$error,
-  touched: props.field.$touched,
-  changed: props.field.changed,
-});
+const { value, error, touched, onChange } = useUnit(props.field.$$input);
 </script>
 
 <template>
@@ -25,7 +20,7 @@ const { value, error, touched, changed } = useUnit({
       :type="type"
       :value="value"
       :aria-invalid="touched && !!error"
-      @input="changed(($event.target as HTMLInputElement).value)"
+      @input="onChange(($event.target as HTMLInputElement).value)"
     />
     <small v-if="touched && error" class="err">{{ error }}</small>
   </label>

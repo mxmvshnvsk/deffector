@@ -5,14 +5,7 @@ const ANN = { email: 'ann@example.com', password: 'secret-pass', name: 'Ann Lee'
 
 /** Each button reproduces a classic effector mistake from the shared model. */
 export function BugsToCatch() {
-  const bugs = useUnit({
-    greetLater: model.greetLaterFx,
-    greeting: model.$greeting,
-    quickFill: model.quickFill,
-    strength: model.$profileStrength,
-    name: model.name.$value,
-    nameChanged: model.name.changed,
-  });
+  const bugs = useUnit(model.$$bugs);
   return (
     <section className="card">
       <h2>Bugs to catch</h2>
@@ -24,11 +17,11 @@ export function BugsToCatch() {
         <button
           type="button"
           data-testid="greet-bug"
-          onClick={() => bugs.greetLater({ name: bugs.name, fixed: false })}
+          onClick={() => bugs.onGreetLater({ name: bugs.name, fixed: false })}
         >
           Greet later (no scopeBind)
         </button>
-        <button type="button" onClick={() => bugs.greetLater({ name: bugs.name, fixed: true })}>
+        <button type="button" onClick={() => bugs.onGreetLater({ name: bugs.name, fixed: true })}>
           Greet later (fixed)
         </button>
       </div>
@@ -36,13 +29,13 @@ export function BugsToCatch() {
         Greeting: <b data-testid="greeting">{bugs.greeting || '—'}</b>
       </p>
       <div className="row">
-        <button type="button" data-testid="quick-fill" onClick={() => bugs.quickFill(ANN)}>
+        <button type="button" data-testid="quick-fill" onClick={() => bugs.onQuickFill(ANN)}>
           Quick fill (double update)
         </button>
         <span className="muted">strength: {bugs.strength}</span>
       </div>
       <div className="row">
-        <button type="button" onClick={() => bugs.nameChanged('crash')}>
+        <button type="button" onClick={() => bugs.onNameChange('crash')}>
           Name = “crash” (throws in .map)
         </button>
       </div>

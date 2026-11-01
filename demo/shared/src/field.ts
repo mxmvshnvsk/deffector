@@ -13,6 +13,13 @@ export interface FormField<T> {
   $touched: StoreWritable<boolean>;
   /** `null` when the value is valid */
   $error: Store<string | null>;
+  /** what an input binds with one `useUnit`: events exposed as React-style `on*` */
+  $$input: {
+    value: StoreWritable<T>;
+    error: Store<string | null>;
+    touched: StoreWritable<boolean>;
+    onChange: EventCallable<T>;
+  };
 }
 
 /** A tiny form field factory: shows up as one group in deffector's Stores tab. */
@@ -26,5 +33,12 @@ export function createField<T>(initial: T, validate: (value: T) => string | null
     .on(changed, () => true)
     .reset(reset);
   const $error = $value.map((value) => validate(value));
-  return { changed, reset, $value, $touched, $error };
+  return {
+    changed,
+    reset,
+    $value,
+    $touched,
+    $error,
+    $$input: { value: $value, error: $error, touched: $touched, onChange: changed },
+  };
 }

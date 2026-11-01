@@ -5,20 +5,7 @@ import { TextField } from './TextField';
 
 export function SignupForm() {
   const termsId = createUniqueId();
-  const form = useUnit({
-    terms: model.$terms,
-    termsToggled: model.termsToggled,
-    submit: model.submitPressed,
-    reset: model.formReset,
-    canSubmit: model.$canSubmit,
-    submitting: model.$submitting,
-    user: model.$user,
-    serverError: model.$serverError,
-    attempts: model.$attempts,
-    suggestions: model.$suggestions,
-    emailChanged: model.email.changed,
-    initials: model.$nameInitials,
-  });
+  const form = useUnit(model.$$signupForm);
   return (
     <section class="card">
       <h2>Sign up</h2>
@@ -27,7 +14,7 @@ export function SignupForm() {
         <div class="sugg">
           <For each={form.suggestions()}>
             {(suggestion) => (
-              <button type="button" onClick={() => form.emailChanged(suggestion)}>
+              <button type="button" onClick={() => form.onSuggestionPick(suggestion)}>
                 {suggestion}
               </button>
             )}
@@ -42,7 +29,7 @@ export function SignupForm() {
           type="checkbox"
           data-testid="terms"
           checked={form.terms()}
-          onChange={() => form.termsToggled()}
+          onChange={() => form.onTermsToggle()}
         />{' '}
         I accept the terms
       </label>
@@ -51,11 +38,11 @@ export function SignupForm() {
           type="button"
           data-testid="submit"
           classList={{ pri: form.canSubmit() }}
-          onClick={() => form.submit()}
+          onClick={() => form.onSubmit()}
         >
           {form.submitting() ? 'Sending…' : 'Create account'}
         </button>
-        <button type="button" onClick={() => form.reset()}>
+        <button type="button" onClick={() => form.onReset()}>
           Reset
         </button>
         <span class="muted">

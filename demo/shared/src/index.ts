@@ -24,10 +24,11 @@ export const formReset = createEvent();
 export const signupFx = createEffect(signupRequest);
 export const $submitting = signupFx.pending;
 
-export const $errors = combine(
-  { email: email.$error, password: password.$error, name: name.$error },
-  (errors) => errors,
-);
+export const $errors = combine({
+  email: email.$error,
+  password: password.$error,
+  name: name.$error,
+});
 export const $canSubmit = combine(
   $errors,
   $terms,
@@ -116,3 +117,44 @@ export const $count = createStore(0)
   .on(incremented, (count) => count + 1)
   .on(decremented, (count) => count - 1);
 export const $isEven = $count.map((count) => count % 2 === 0);
+
+// ------------------------------------------------------------------ binding shapes
+
+/**
+ * What a component binds with one `useUnit`. Events keep their fact names in the
+ * model (`submitPressed`) and are exposed to the UI as `on*` handlers, so a
+ * component never names a fact and never touches a unit directly.
+ *
+ * The same shape serves React, Vue and Solid: only the way their `useUnit`
+ * returns values differs (`value`, `.value`, `()`), not the map itself.
+ */
+export const $$signupForm = {
+  terms: $terms,
+  canSubmit: $canSubmit,
+  submitting: $submitting,
+  user: $user,
+  serverError: $serverError,
+  attempts: $attempts,
+  suggestions: $suggestions,
+  initials: $nameInitials,
+  onTermsToggle: termsToggled,
+  onSubmit: submitPressed,
+  onReset: formReset,
+  onSuggestionPick: email.changed,
+};
+
+export const $$counter = {
+  count: $count,
+  isEven: $isEven,
+  onIncrement: incremented,
+  onDecrement: decremented,
+};
+
+export const $$bugs = {
+  greeting: $greeting,
+  strength: $profileStrength,
+  name: name.$value,
+  onGreetLater: greetLaterFx,
+  onQuickFill: quickFill,
+  onNameChange: name.changed,
+};

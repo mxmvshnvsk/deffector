@@ -12,12 +12,7 @@ interface TextFieldProps {
 /** An input bound to a field from the shared model's `createField` factory. */
 export function TextField(props: TextFieldProps) {
   const inputId = createUniqueId();
-  const [value, error, touched, changed] = useUnit([
-    props.field.$value,
-    props.field.$error,
-    props.field.$touched,
-    props.field.changed,
-  ]);
+  const { value, error, touched, onChange } = useUnit(props.field.$$input);
   const shownError = () => (touched() ? error() : null);
   return (
     <label class="field" for={inputId}>
@@ -27,7 +22,7 @@ export function TextField(props: TextFieldProps) {
         data-testid={props.testId}
         type={props.type}
         value={value()}
-        onInput={(event) => changed(event.currentTarget.value)}
+        onInput={(event) => onChange(event.currentTarget.value)}
         aria-invalid={!!shownError()}
       />
       <Show when={shownError()}>
