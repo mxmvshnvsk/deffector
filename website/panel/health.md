@@ -77,10 +77,12 @@ the store.
 
 ### Derived store written directly
 
-**Warning** · `Derived store $x is written directly`
+**Warning** · `Derived store $x is written directly` · **effector 22 only**
 
-A `map`/`combine` store got a value from `sample` or an event. effector deprecates it: the next source
-update overwrites the value, and the store and its sources disagree in between.
+A `map`/`combine` store got a value from `sample` or an event. effector 22 deprecates it: the next
+source update overwrites the value, and the store and its sources disagree in between. effector 23
+rejects the write outright — `sample` into a derived store and `.on` of one both throw at startup — so
+this check is skipped there and upgrading turns the problem into an error you cannot miss.
 
 **Fix:** make it a regular store (`createStore` + `.on` / `sample`), or write to its sources instead.
 
