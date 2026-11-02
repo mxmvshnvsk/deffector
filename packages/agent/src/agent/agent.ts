@@ -263,18 +263,27 @@ export class Agent {
    * with another scope. The returned function is called when the provider
    * unmounts: the scope stays known, for history.
    */
+  /** @returns a teardown for the adapter to call when its provider goes away */
   registerScope(
     scope: EffectorScope | object,
     options: { name?: string; switcher?: ScopeSwitcher } = {},
   ): () => void {
-    this.scopes.register(asInternalScope(scope), options);
+    const { switcherOwner } = this.scopes.register(asInternalScope(scope), options);
+    this.onScopesChanged();
+    return () => {
+      this.scopes.unregister(switcherOwner);
+      this.onScopesChanged();
+    };
+  }
+
+  /** Time travel can only render a past scope while an adapter offers a switcher. */
+  private onScopesChanged() {
     this.timeline.liveScopeId = this.scopes.liveId;
     this.timeline.viewScopeId = this.scopes.viewId;
     this.timeline.strategy =
       this.scopes.isForkUsed && this.scopes.hasSwitcher() ? 'fork' : 'in-place';
     this.health.refreshStaticDiagnostics();
     this.connection.scheduleFlush();
-    return () => {};
   }
 
   connect(transport: AgentTransport): () => void {
