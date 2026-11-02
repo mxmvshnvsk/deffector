@@ -7,7 +7,7 @@ export const en = {
   outOfScopeDetail: (unit: string) =>
     `${unit} was called outside of any scope while the app uses fork(). The change went to the global graph; the app reads its own scope and does not see it. Usually a call from setTimeout, a socket or a third-party callback, or a direct call instead of useUnit.`,
   outOfScopeFix: (unit: string) =>
-    `Bind it before leaving the effect: const fn = scopeBind(${unit}), or call it through useUnit`,
+    `Bind it before leaving the effect: const fn = scopeBind(${unit}), or call it through useUnit. For a callback that may fire with no scope at all, scopeBind(${unit}, { safe: true })`,
   doubleTitle: (unit: string) => `${unit} updated more than once in one transaction`,
   doubleDetail:
     'The store was recomputed twice in one propagation. effector orders combine and sample steps by declaration order, not by graph topology, so a consumer declared before its sources reads a stale value first.',
@@ -32,7 +32,8 @@ export const en = {
   dupTitle: (sid: string) => `Duplicate sid ${sid}`,
   dupDetail: (names: string) =>
     `${names} share one sid: serialize, hydration and handler mocking will mix them up. Usually a factory missing from the plugin's factories list, or the plugin applied twice.`,
-  dupFix: "Add the factory to the plugin's factories option",
+  dupFix:
+    "Add the factory to the plugin's factories option; @withease/factories with invoke() gives each instance its own sid",
   globalTitle: 'Global mode: no fork() scope',
   globalDetail:
     'Time travel writes values in place with launch: watchers, samples and effects react to it, so the result is not guaranteed. Replay mocks effect handlers globally.',
@@ -83,7 +84,7 @@ export const en = {
     'Use the same babel/swc plugin config on server and client; list factories in the plugin options',
   derivedWriteTitle: (unit: string) => `Derived store ${unit} is written directly`,
   derivedWriteDetail:
-    'A map/combine store got a value from sample or an event. effector deprecates it: the next source update overwrites the value, and the two disagree in between.',
+    'A map/combine store got a value from sample or an event. effector 22 deprecates it: the next source update overwrites the value, and the two disagree in between. effector 23 rejects it outright, so upgrading turns this into an error at startup.',
   derivedWriteFix: (unit: string) =>
     `Make ${unit} a regular store (createStore + .on/sample), or write to its sources instead`,
   staleReadTitle: (reader: string, store: string) =>

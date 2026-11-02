@@ -47,7 +47,11 @@ export function findStaleReads(
   return staleReads;
 }
 
-/** A derived store (map/combine) written by sample or another unit instead of its own computation. */
+/**
+ * A derived store (map/combine) written by sample or another unit instead of its
+ * own computation. Only reachable on effector 22, which deprecated it; 23
+ * asserts in `sample` and in `.on`, so the finalizer skips this check there.
+ */
 export function findDerivedWrites(transaction: RawTransaction, registry: Registry): string[] {
   const written = new Set<string>();
   for (const step of transaction.steps) {

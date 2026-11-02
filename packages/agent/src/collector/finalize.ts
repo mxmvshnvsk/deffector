@@ -1,4 +1,4 @@
-import type { Node } from '../effector';
+import { allowsDerivedStoreWrites, type Node } from '../effector';
 import type { History, RawTransaction } from '../history';
 import type { Registry } from '../registry';
 import { GLOBAL_ID, type Scopes } from '../scopes';
@@ -69,8 +69,11 @@ export class TransactionFinalizer {
     if (!isStopped) {
       const staleReads = findStaleReads(transaction, this.registry);
       if (staleReads.length) transaction.flags.staleReads = staleReads;
-      const derivedWrites = findDerivedWrites(transaction, this.registry);
-      if (derivedWrites.length) transaction.flags.derivedWrite = derivedWrites;
+      // effector 23 rejects the write outright, so there is nothing to find
+      if (allowsDerivedStoreWrites) {
+        const derivedWrites = findDerivedWrites(transaction, this.registry);
+        if (derivedWrites.length) transaction.flags.derivedWrite = derivedWrites;
+      }
     }
     if (this.isIgnored(transaction, ignorePatterns)) transaction.flags.hidden = true;
     if (this.isOutOfScope(transaction)) transaction.flags.outOfScope = true;
