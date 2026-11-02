@@ -60,6 +60,19 @@ export interface RawTransaction {
   note?: string;
   /** writable store ref id → value after this transaction */
   deltas: Map<string, unknown>;
+  /**
+   * Deltas found past `maxSteps`, where a store cannot be judged changed by its
+   * children because they were never recorded. Merged over `deltas` after the
+   * step statuses settle, so a late change wins over an earlier recorded one.
+   */
+  lateDeltas?: Map<string, unknown>;
+  /**
+   * The value each of those stores held before its first change found this way.
+   * Applied only where a recorded step did not already provide one: a step that
+   * ran earlier in the transaction knows the earlier value, and `previousValues`
+   * and the base snapshot must hold the earliest, not the latest.
+   */
+  latePreviousValues?: Map<string, unknown>;
   /** writable store ref id → value before the first change in this transaction */
   previousValues: Map<string, unknown>;
   payload: unknown;

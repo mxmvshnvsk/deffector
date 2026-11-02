@@ -21,10 +21,10 @@ export const en = {
     `${message}. effector logs it and stops only this branch: sibling branches have already committed, so derived stores can be out of sync with their sources.`,
   errorFix: 'Keep reducers and mapping functions pure and total; move risky code to an effect',
   failTitle: (unit: string) => `${unit} failed`,
-  cycleTitle: (unit: string) => `Possible infinite loop from ${unit}`,
-  cycleDetail: (stepLimit: number) =>
-    `One transaction ran more than ${stepLimit} steps. Synchronous cycles through events never stop and freeze the tab; cycles through stores stop once the value stops changing.`,
-  cycleFix: 'Open Graph and look for a cycle that goes only through events',
+  limitTitle: (unit: string) => `${unit} ran more steps than deffector records`,
+  limitDetail: (stepLimit: number) =>
+    `The transaction passed ${stepLimit} steps, so the rest of its step tree was not recorded. Store changes are still kept, so the Stores tab and time travel stay right. A synchronous loop that never ends is reported separately, by the emergency stop.`,
+  limitFix: 'Raise the limit with attachDeffector({ maxSteps }) to record the whole tree',
   noSidTitle: (count: number, total: number) => `${count} of ${total} stores have no sid`,
   noSidDetail: (names: string) =>
     `${names}. serialize(scope) skips them silently, and a recorded trace can match them only by name. Time travel still works within this page.`,
