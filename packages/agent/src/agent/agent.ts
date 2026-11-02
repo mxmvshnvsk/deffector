@@ -268,11 +268,10 @@ export class Agent {
     scope: EffectorScope | object,
     options: { name?: string; switcher?: ScopeSwitcher } = {},
   ): () => void {
-    const internal = asInternalScope(scope);
-    this.scopes.register(internal, options);
+    const { switcherOwner } = this.scopes.register(asInternalScope(scope), options);
     this.onScopesChanged();
     return () => {
-      this.scopes.unregister(internal);
+      this.scopes.unregister(switcherOwner);
       this.onScopesChanged();
     };
   }

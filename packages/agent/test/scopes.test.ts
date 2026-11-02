@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { allSettled, createEvent, createStore, fork } from 'effector';
 import { createMemoryTransportPair } from '@deffector/protocol';
 import { Agent } from '../src/agent';
-import { asInternalScope } from '../src/effector';
+import { GLOBAL_ID } from '../src/scopes';
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
@@ -100,12 +100,86 @@ describe('scope records', () => {
     expect(agent.scopes.get(id)).toBe(scope);
   });
 
-  it('does not invent a record for a scope that was never registered', () => {
+  it('ignores a teardown for a registration that installed no switcher', () => {
     const { agent } = setup();
     const before = agent.scopes.list().length;
-    agent.scopes.unregister(asInternalScope(fork()));
+    agent.scopes.unregister(undefined);
+    agent.scopes.unregister(9999);
     expect(agent.scopes.list().length).toBe(before);
   });
+
+  it('keeps a newer registration when an older teardown runs', async () => {
+    const { agent, flush } = setup();
+    const scope = fork();
+    await allSettled(requestStarted, { scope, params: 1 });
+    await flush();
+
+    const first = agent.registerScope(scope, { name: 'first', switcher: () => {} });
+    agent.registerScope(scope, { name: 'second', switcher: () => {} });
+    first();
+
+    // the second registration owns a different token and must survive
+    expect(agent.scopes.hasSwitcher()).toBe(true);
+    expect(agent.timeline.strategy).toBe('fork');
+  });
+
+  it('invalidates the switcher copies a time-travel branch made', async () => {
+    const { agent, flush } = setup();
+    const scope = fork();
+    await allSettled(requestStarted, { scope, params: 1 });
+    await flush();
+    const teardown = agent.registerScope(scope, { name: 'root', switcher: () => {} });
+    const past = agent.history.transactions.at(-1)!;
+    await allSettled(requestStarted, { scope, params: 2 });
+    await flush();
+
+    // the branch record copies the root's switcher
+    agent.jump(past.id);
+    await flush();
+    expect(agent.scopes.hasSwitcher()).toBe(true);
+
+    teardown();
+    expect(agent.scopes.hasSwitcher()).toBe(false);
+    expect(agent.timeline.strategy).toBe('in-place');
+  });
+
+  it.runIf(collectGarbage)(
+    'refuses to act on a collected scope instead of hitting global',
+    async () => {
+      const { agent, flush } = setup();
+      const $global = createStore(0, { sid: 'scopes$global', name: 'scopesGlobal' }).on(
+        requestStarted,
+        (_current, n) => n,
+      );
+      await allSettled(requestStarted, { scope: fork(), params: 42 });
+      await flush();
+      const tx = agent.history.transactions.at(-1)!;
+      expect(tx.scopeId).not.toBe(GLOBAL_ID);
+
+      collectGarbage!();
+      await flush();
+      collectGarbage!();
+      await flush();
+      expect(agent.scopes.get(tx.scopeId)).toBe(null);
+      expect(agent.scopes.isAvailable(tx.scopeId)).toBe(false);
+      // the global graph is always available, and is a different thing
+      expect(agent.scopes.isAvailable(GLOBAL_ID)).toBe(true);
+
+      agent.jump(tx.id);
+      await flush();
+      expect($global.getState()).toBe(0);
+
+      agent.dispatch(
+        tx.scopeId,
+        agent.registry.allInfos().find((i) => i.sid === 'scopes$global')!.id,
+        7,
+      );
+      await flush();
+      expect($global.getState()).toBe(0);
+
+      expect(agent.stateValues(tx.scopeId, null)).toEqual({});
+    },
+  );
 
   it.runIf(collectGarbage)('releases a scope once its provider is gone', async () => {
     const { agent, flush } = setup();

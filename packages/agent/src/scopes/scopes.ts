@@ -11,7 +11,21 @@ interface ScopeRecord {
   /** weak: a server forks a scope per request, and the agent must not outlive them. null = global */
   scope: WeakBox<Scope> | null;
   switcher?: ScopeSwitcher;
+  /**
+   * The registration that installed this switcher. `show` and `addBranch` copy a
+   * switcher into other records; the copies carry the same owner, so ending one
+   * registration invalidates all of them, and a newer registration of the same
+   * scope is not torn down by an older cleanup.
+   */
+  switcherOwner?: number;
   branch?: ScopeInfo['branch'];
+}
+
+/** What `register` hands back: the scope's id, and the token its cleanup needs. */
+export interface Registration {
+  scopeId: string;
+  /** undefined when no switcher was installed: there is nothing to tear down */
+  switcherOwner: number | undefined;
 }
 
 export interface RegisterScopeOptions {
@@ -44,6 +58,8 @@ export class Scopes {
   private readonly watchCollection = createCollectionWatcher<string>((id) => this.forget(id));
 
   private createdCount = 0;
+
+  private registrationCount = 0;
 
   /** at least one fork() scope was seen: calls outside of scope become suspicious */
   isForkUsed = false;
@@ -90,34 +106,74 @@ export class Scopes {
     return id;
   }
 
-  register(scope: Scope, options: RegisterScopeOptions = {}): string {
-    const id = this.idOf(scope);
-    const record = this.records.get(id)!;
+  register(scope: Scope, options: RegisterScopeOptions = {}): Registration {
+    const scopeId = this.idOf(scope);
+    const record = this.records.get(scopeId)!;
     if (options.name) record.name = options.name;
     else if (scope.name && DEFAULT_NAME.test(record.name)) record.name = scope.name;
-    if (options.switcher) record.switcher = options.switcher;
+    let switcherOwner: number | undefined;
+    if (options.switcher) {
+      this.registrationCount += 1;
+      switcherOwner = this.registrationCount;
+      record.switcher = options.switcher;
+      record.switcherOwner = switcherOwner;
+    }
     const liveHasNoSwitcher =
       !this.liveId || this.liveId === GLOBAL_ID || !this.records.get(this.liveId)?.switcher;
     if (options.live !== false && liveHasNoSwitcher) {
-      this.liveId = id;
-      this.viewId = id;
+      this.liveId = scopeId;
+      this.viewId = scopeId;
     }
     this.hasUnsentChanges = true;
-    return id;
+    return { scopeId, switcherOwner };
   }
 
   /**
    * An adapter's provider went away: its switcher closes over a tree that no
    * longer exists, so it must not stay behind to be reported by `hasSwitcher`
-   * or called by `show`. Looked up without `idOf`, which would mint a record
-   * for a scope that was never registered.
+   * or called by `show`. Every record holding a copy of that registration's
+   * switcher is cleared; a newer registration owns a different token and stays.
    */
-  unregister(scope: Scope) {
-    const id = this.idsByScope.get(scope);
-    const record = id === undefined ? undefined : this.records.get(id);
-    if (!record?.switcher) return;
-    delete record.switcher;
-    this.hasUnsentChanges = true;
+  unregister(switcherOwner: number | undefined) {
+    if (switcherOwner === undefined) return;
+    let changed = false;
+    for (const record of this.records.values()) {
+      if (record.switcherOwner !== switcherOwner) continue;
+      delete record.switcher;
+      delete record.switcherOwner;
+      changed = true;
+    }
+    if (changed) this.hasUnsentChanges = true;
+  }
+
+  /**
+   * Whether the id still names something the agent can act on. The global graph
+   * always can; a scope whose record is gone, or whose weak box is empty after
+   * collection, cannot — and must not be mistaken for the global graph, which is
+   * what a bare `get() === null` would do.
+   */
+  isAvailable(id: string): boolean {
+    if (id === GLOBAL_ID) return true;
+    return !!Scopes.scopeOf(this.records.get(id));
+  }
+
+  /**
+   * A switcher belongs to the app root, so every scope rendered through it shares
+   * it — owner included, or ending the original registration could not reach the
+   * copies. Takes ids rather than records so the mutation stays on a local, the
+   * way the rest of this class does it.
+   */
+  private copySwitcherFrom(targetId: string, sourceId: string | undefined) {
+    const target = this.records.get(targetId);
+    if (!target) return;
+    const source = sourceId === undefined ? undefined : this.records.get(sourceId);
+    if (source?.switcher) {
+      target.switcher = source.switcher;
+      target.switcherOwner = source.switcherOwner;
+      return;
+    }
+    delete target.switcher;
+    delete target.switcherOwner;
   }
 
   /** a name from fork({ name }) unless the app or an adapter gave one */
@@ -139,7 +195,7 @@ export class Scopes {
     const record = this.records.get(id)!;
     record.name = name;
     record.branch = { fromScopeId, txId: transactionId, reason };
-    record.switcher = this.records.get(fromScopeId)?.switcher;
+    this.copySwitcherFrom(id, fromScopeId);
     this.hasUnsentChanges = true;
     return id;
   }
@@ -161,11 +217,12 @@ export class Scopes {
   show(id: string): boolean {
     const target = this.records.get(id);
     const scope = Scopes.scopeOf(target);
-    const switcher = this.records.get(this.viewId || '')?.switcher || target?.switcher;
+    const viewId = this.viewId || '';
+    const viewSwitcher = this.records.get(viewId)?.switcher;
+    const switcher = viewSwitcher || target?.switcher;
     if (!target || !scope || !switcher) return false;
     switcher(asEffectorScope(scope));
-    // the switcher belongs to the app root, every scope rendered through it shares it
-    target.switcher = switcher;
+    this.copySwitcherFrom(id, viewSwitcher ? viewId : id);
     this.viewId = id;
     this.hasUnsentChanges = true;
     return true;
