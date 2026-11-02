@@ -146,7 +146,7 @@ export class Collector {
         this.settleStoresAtLimit(transaction, stack.scope);
       }
       this.stepLocations.set(stack, { transaction, index: -1 });
-      this.keepLateDelta(transaction, record, stack);
+      Collector.keepLateDelta(transaction, record, stack);
       return;
     }
     const op: string = node.meta.op;
@@ -195,10 +195,10 @@ export class Collector {
    * kernel's own condition cannot be reproduced from `meta` (`skipVoid` is not
    * exposed), hence the read rather than a comparison of `stack.value`.
    */
-  private keepLateDelta(transaction: RawTransaction, record: UnitRecord, stack: Stack) {
+  private static keepLateDelta(transaction: RawTransaction, record: UnitRecord, stack: Stack) {
     const ref = record.stateRef;
     if (!ref || !record.info.writable) return;
-    this.rememberLate(transaction, ref.id, readScopeValue(stack.scope, ref), stack.a);
+    Collector.rememberLate(transaction, ref.id, readScopeValue(stack.scope, ref), stack.a);
   }
 
   /** Stores already recorded in a transaction that turned out to be truncated. */
@@ -207,23 +207,29 @@ export class Collector {
       if (!step.isWritable || !step.stateRefId || step.childCount > 0 || step.hasFailed) continue;
       const ref = this.registry.unitsByStateRef.get(step.stateRefId)?.stateRef;
       if (!ref) continue;
-      this.rememberLate(transaction, ref.id, readScopeValue(scope, ref), step.previousValue);
+      Collector.rememberLate(transaction, ref.id, readScopeValue(scope, ref), step.previousValue);
     }
   }
 
-  private rememberLate(
+  /**
+   * The latest committed value wins for the delta; the earliest known value wins
+   * for `previousValues`. Neither is written through to the transaction or the
+   * base snapshot here: a step recorded earlier in the same transaction knows a
+   * better previous value, and it only settles once the transaction is over.
+   */
+  private static rememberLate(
     transaction: RawTransaction,
     stateRefId: string,
     committed: unknown,
     previous: unknown,
   ) {
     if (committed === previous) return;
-    if (!transaction.previousValues.has(stateRefId)) {
-      transaction.previousValues.set(stateRefId, previous);
-    }
     if (!transaction.lateDeltas) transaction.lateDeltas = new Map();
     transaction.lateDeltas.set(stateRefId, committed);
-    this.history.rememberInitialValue(transaction.scopeId, stateRefId, previous);
+    if (!transaction.latePreviousValues) transaction.latePreviousValues = new Map();
+    if (!transaction.latePreviousValues.has(stateRefId)) {
+      transaction.latePreviousValues.set(stateRefId, previous);
+    }
   }
 
   private transactionOf(

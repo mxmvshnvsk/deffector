@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allSettled, createEvent, createStore, fork, sample } from 'effector';
-import { createMemoryTransportPair } from '@deffector/protocol';
+import { createMemoryTransportPair, decode } from '@deffector/protocol';
 import { Agent } from '../src/agent';
 
 const sleep = (ms: number) =>
@@ -96,5 +96,94 @@ describe('a transaction cut off at maxSteps', () => {
     const atTruncated = agent.stateValues(scopeId, truncated.id);
     expect(Object.values(atTruncated)).toContain(101);
     expect(Object.values(atTruncated)).not.toContain(901);
+  });
+});
+
+describe('a store written both before and after the limit', () => {
+  const EARLY = 100;
+  const LATE = 101;
+
+  /** 0 -> EARLY under the limit -> LATE past it, in one transaction */
+  async function runEarlyThenLate() {
+    const { agent, flush } = setup();
+    const kick = createEvent<number>({ name: 'orderKick' });
+    const relay = createEvent<number>({ name: 'orderRelay' });
+    const $target = createStore(0, { sid: 'order$target', name: 'orderTarget' })
+      .on(kick, (_current, value) => value)
+      .on(relay, (_current, value) => value);
+    const filler = Array.from({ length: STORES }, (_current, i) =>
+      createStore(0, { sid: `orderFill$${i}` }).on(kick, (_x, value) => value + i),
+    );
+    void filler;
+    sample({ clock: kick, fn: (value: number) => value + 1, target: relay });
+
+    const scope = fork();
+    await allSettled(kick, { scope, params: EARLY });
+    await flush();
+
+    const transaction = agent.history.transactions.at(-1)!;
+    const unit = agent.registry.allInfos().find((info) => info.sid === 'order$target')!;
+    const refId = agent.registry.get(unit.id)!.stateRef!.id;
+    return { agent, flush, scope, $target, transaction, unitId: unit.id, refId };
+  }
+
+  it('keeps the latest value as the delta and the earliest as the previous one', async () => {
+    const { scope, $target, transaction, refId } = await runEarlyThenLate();
+    expect(transaction.flags.truncated).toBe(true);
+    expect(scope.getState($target)).toBe(LATE);
+    expect(transaction.deltas.get(refId)).toBe(LATE);
+    // 0, not EARLY: the recorded step knows what the transaction started from
+    expect(transaction.previousValues.get(refId)).toBe(0);
+  });
+
+  it('keeps the real initial value in the base snapshot', async () => {
+    const { agent, transaction, refId } = await runEarlyThenLate();
+    expect(agent.history.baseOf(transaction.scopeId).get(refId)).toBe(0);
+  });
+
+  it('exports the real initial value in a trace', async () => {
+    const { agent, transaction, unitId } = await runEarlyThenLate();
+    const trace = agent.traces.export(transaction.scopeId);
+    expect(decode(trace.initial[unitId])).toBe(0);
+  });
+
+  it('reconstructs the state before the transaction, and after it once evicted', async () => {
+    const { agent, flush, scope, transaction, refId } = await runEarlyThenLate();
+    const { scopeId } = transaction;
+    // the state before a truncated transaction comes from the base snapshot
+    expect(
+      agent.history.valuesAt(scopeId, transaction.id - 1, [refId], () => LATE).get(refId),
+    ).toBe(0);
+
+    // push it out of the buffer: its deltas fold into the base snapshot
+    agent.history.capacity = 1;
+    const settle = createEvent({ name: 'orderSettle' });
+    await allSettled(settle, { scope });
+    await flush();
+    expect(agent.history.baseOf(scopeId).get(refId)).toBe(LATE);
+  });
+});
+
+describe('what Health says about a truncated transaction', () => {
+  it('reports a recording limit, not a possible infinite loop', async () => {
+    const { agent, flush } = setup();
+    const kick = createEvent<number>({ name: 'healthKick' });
+    const stores = Array.from({ length: STORES }, (_current, i) =>
+      createStore(0, { sid: `health$${i}` }).on(kick, (_x, value) => value + i),
+    );
+    void stores;
+    await allSettled(kick, { scope: fork(), params: 100 });
+    await flush();
+
+    expect(agent.history.transactions.at(-1)!.flags.truncated).toBe(true);
+    const codes = agent.diagnostics.list().map((item) => item.code);
+    expect(codes).toContain('recording-limit');
+    expect(codes).not.toContain('cycle');
+
+    const limit = agent.diagnostics.list().find((item) => item.code === 'recording-limit')!;
+    expect(limit.level).toBe('info');
+    expect(limit.detail).toContain(String(MAX_STEPS));
+    // the ok item would claim no transaction passed the limit, which this one did
+    expect(codes).not.toContain('ok');
   });
 });

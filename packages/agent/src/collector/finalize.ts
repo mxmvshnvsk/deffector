@@ -41,12 +41,7 @@ export class TransactionFinalizer {
     transaction.isOpen = false;
     transaction.nestingCandidate = undefined;
     const changeCounts = settleStepStatuses(transaction, this.history);
-    // found past the step limit, so they are newer than anything settled above
-    if (transaction.lateDeltas) {
-      for (const [stateRefId, value] of transaction.lateDeltas) {
-        transaction.deltas.set(stateRefId, value);
-      }
-    }
+    this.applyLateValues(transaction);
     // a runaway cut by the emergency stop repeats everything: no double/stale analysis
     const isStopped = !!transaction.flags.stopped;
     if (!isStopped) {
@@ -80,6 +75,25 @@ export class TransactionFinalizer {
     }
     if (this.isIgnored(transaction, ignorePatterns)) transaction.flags.hidden = true;
     if (this.isOutOfScope(transaction)) transaction.flags.outOfScope = true;
+  }
+
+  /**
+   * Values found past the step limit. A late change is newer than anything the
+   * steps settled, so it wins the delta; the value before it is older than
+   * nothing, so it only fills a `previousValues` entry (and the base snapshot)
+   * that no recorded step claimed.
+   */
+  private applyLateValues(transaction: RawTransaction) {
+    const { lateDeltas, latePreviousValues } = transaction;
+    if (lateDeltas) {
+      for (const [stateRefId, value] of lateDeltas) transaction.deltas.set(stateRefId, value);
+    }
+    if (!latePreviousValues) return;
+    for (const [stateRefId, previous] of latePreviousValues) {
+      if (transaction.previousValues.has(stateRefId)) continue;
+      transaction.previousValues.set(stateRefId, previous);
+      this.history.rememberInitialValue(transaction.scopeId, stateRefId, previous);
+    }
   }
 
   /** What an exception prevented: the units the failed steps would have pushed. */

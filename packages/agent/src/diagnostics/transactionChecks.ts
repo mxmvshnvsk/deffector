@@ -150,18 +150,26 @@ const checkEffectFailure: Check = (transaction, { labels, texts, findings }) => 
   );
 };
 
-const checkRunaway: Check = (transaction, { labels, texts, maxSteps, findings }) => {
+/**
+ * More steps than `maxSteps` means the step tree was cut, not that the
+ * transaction never ended: a few hundred list items with a model each, or a
+ * store feeding a few hundred derived ones, reach the limit while finishing
+ * perfectly well. A synchronous loop that really does not end is what the
+ * emergency stop reports, with the units it was looping through.
+ */
+const checkRecordingLimit: Check = (transaction, { labels, texts, maxSteps, findings }) => {
   if (!transaction.flags.truncated || transaction.flags.stopped) return;
   const rootId = transaction.root.id;
   findings.count(
-    `cycle:${rootId}`,
+    `recording-limit:${rootId}`,
     () => ({
-      level: 'error',
-      code: 'cycle',
+      level: 'info',
+      code: 'recording-limit',
       node: rootId,
-      title: texts.cycleTitle(labels.name(rootId)),
-      detail: texts.cycleDetail(maxSteps),
-      fix: texts.cycleFix,
+      file: labels.location(rootId),
+      title: texts.limitTitle(labels.name(rootId)),
+      detail: texts.limitDetail(maxSteps),
+      fix: texts.limitFix,
     }),
     transaction.id,
   );
@@ -175,7 +183,7 @@ const CHECKS_OF_FINISHED_RUNS: Check[] = [
   checkStaleReads,
   checkDerivedWrites,
   checkEffectFailure,
-  checkRunaway,
+  checkRecordingLimit,
 ];
 
 /** Findings of one closed transaction (skipped steps of a replay have none). */
