@@ -83,13 +83,17 @@ export class TimeTravel {
   }
 
   goLive() {
-    const { scopes, storeValues, timeline, connection } = this.parts;
+    const { scopes, history, storeValues, timeline, connection } = this.parts;
     if (timeline.mode === 'past') {
       if (this.savedPresent) {
         storeValues.writeInPlace(this.savedPresent.scopeId, this.savedPresent.values);
         this.savedPresent = null;
       } else if (scopes.liveId && scopes.viewId !== scopes.liveId) {
+        const abandoned = scopes.viewId;
         scopes.show(scopes.liveId);
+        // the forked past is not rendered any more, and its base was only for it;
+        // `forgetBaseOf` refuses if the branch received transactions of its own
+        if (abandoned && abandoned !== scopes.viewId) history.forgetBaseOf(abandoned);
       }
     }
     timeline.mode = 'live';

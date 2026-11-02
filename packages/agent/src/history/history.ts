@@ -15,6 +15,9 @@ export class History {
 
   private readonly baseSnapshots = new Map<string, StateSnapshot>();
 
+  /** retained transactions per scope, so an emptied scope is found without a scan */
+  private readonly countByScope = new Map<string, number>();
+
   capacity: number;
 
   constructor(capacity = 1000) {
@@ -48,14 +51,40 @@ export class History {
   push(transaction: RawTransaction): RawTransaction | undefined {
     this.transactions.push(transaction);
     this.transactionsById.set(transaction.id, transaction);
+    this.countByScope.set(
+      transaction.scopeId,
+      (this.countByScope.get(transaction.scopeId) ?? 0) + 1,
+    );
     if (this.transactions.length <= this.capacity) return undefined;
     const evicted = this.transactions.shift()!;
     this.transactionsById.delete(evicted.id);
+    const left = (this.countByScope.get(evicted.scopeId) ?? 1) - 1;
+    if (left > 0) this.countByScope.set(evicted.scopeId, left);
+    else this.countByScope.delete(evicted.scopeId);
     if (!evicted.flags.skipped) {
       const base = this.baseOf(evicted.scopeId);
       for (const [stateRefId, value] of evicted.deltas) base.set(stateRefId, value);
     }
     return evicted;
+  }
+
+  /** Whether any retained transaction belongs to the scope. */
+  hasTransactionsOf(scopeId: string): boolean {
+    return this.countByScope.has(scopeId);
+  }
+
+  /**
+   * Forget a scope's base snapshot. With no retained transaction of that scope
+   * the base answers nothing: `valuesAt` of a transaction that is gone cannot be
+   * asked, and the present is read from the scope itself. Refuses while
+   * transactions remain, since the base is what makes those reconstruct.
+   *
+   * A server forks a scope per request, so without this the agent keeps one
+   * snapshot of writable store values per request it has ever seen.
+   */
+  forgetBaseOf(scopeId: string): boolean {
+    if (this.countByScope.has(scopeId)) return false;
+    return this.baseSnapshots.delete(scopeId);
   }
 
   /**
@@ -88,6 +117,7 @@ export class History {
     ]);
     this.transactions.length = 0;
     this.transactionsById.clear();
+    this.countByScope.clear();
     this.baseSnapshots.clear();
     for (const scopeId of scopeIds) this.baseSnapshots.set(scopeId, readCurrentValues(scopeId));
   }
