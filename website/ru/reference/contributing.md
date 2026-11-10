@@ -83,6 +83,7 @@ npm run docs:dev        # адрес будет в выводе, наприме�
 
 ```sh
 npm run release:check   # что уйдёт в npm (npm pack --dry-run)
+npm run check:artifacts # и совпадает ли это с манифестами (после сборки)
 ```
 
 Чтобы выпустить версию: поднимите `version` в `packages/agent/package.json` и
