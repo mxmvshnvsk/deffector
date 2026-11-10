@@ -53,6 +53,24 @@ const TEXT = /\.(js|mjs|cjs|ts|tsx)$/;
 const problems = [];
 const report = (pkg, problem) => problems.push(`${pkg}: ${problem}`);
 
+/**
+ * The JSON array at the end of `npm pack --json` output.
+ *
+ * `--ignore-scripts` keeps npm 11 from running `prepare`, but npm 10 — what
+ * Node 22 ships, and what the runner uses — runs it anyway and the build writes
+ * to the same stdout. The array always starts on its own line, so the output is
+ * read from the last such line rather than assumed to be JSON throughout.
+ */
+function packJson(output) {
+  const start = output.lastIndexOf('\n[\n');
+  const json = start === -1 ? output : output.slice(start + 1);
+  try {
+    return JSON.parse(json);
+  } catch (error) {
+    throw new Error(`npm pack did not print JSON: ${error.message}\n${output.slice(-400)}`);
+  }
+}
+
 /** The files `npm pack` would put in the tarball, as paths relative to the package. */
 function tarballOf(directory) {
   const output = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
@@ -60,7 +78,7 @@ function tarballOf(directory) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-  const [packed] = JSON.parse(output);
+  const [packed] = packJson(output);
   return { files: new Set(packed.files.map((file) => file.path)), size: packed.unpackedSize };
 }
 
