@@ -1,0 +1,47 @@
+# Runs on every pull request and every push to main: the checks the release
+# workflows already run, moved left so a change is verified before it is tagged.
+#
+# `release.yml` runs lint, typecheck and tests on a `v*` tag, and
+# `extension-release.yml` builds the extension on an `extension-v*` tag. Neither
+# runs before that, so until now nothing verified a pull request, and a broken
+# extension build was only discovered while submitting it to the stores.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# a newer push supersedes a pull request's run; a run for main always finishes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # agent, demo model, extension for Chrome/Edge and Firefox, standalone
+      - run: npm run build
+
+      # npm pack --dry-run of both published packages: the manifest resolves and
+      # `files` produces a tarball
+      - run: npm run release:check
