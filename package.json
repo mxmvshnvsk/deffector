@@ -31,6 +31,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "release:check": "npm pack --dry-run -w @deffector/agent -w @deffector/standalone",
+    "check:artifacts": "node ./scripts/check-artifacts.mjs",
     "dev:react": "npm run dev -w @deffector-demo/react-vite",
     "dev:vue": "npm run dev -w @deffector-demo/vue-vite",
     "dev:solid": "npm run dev -w @deffector-demo/solid-vite",

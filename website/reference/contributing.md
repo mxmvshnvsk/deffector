@@ -82,6 +82,7 @@ repository the demos read the agent from its sources through the `@deffector/sou
 
 ```sh
 npm run release:check   # what would be published (npm pack --dry-run)
+npm run check:artifacts # and whether it matches the manifests (run after the build)
 ```
 
 To release: bump `version` in both `packages/agent/package.json` and `packages/standalone/package.json`,

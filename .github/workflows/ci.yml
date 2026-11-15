@@ -42,6 +42,8 @@ jobs:
       # agent, demo model, extension for Chrome/Edge and Firefox, standalone
       - run: npm run build
 
-      # npm pack --dry-run of both published packages: the manifest resolves and
-      # `files` produces a tarball
-      - run: npm run release:check
+      # what the published packages contain, against what their manifests
+      # promise: every exports/bin target is in the tarball, every relative
+      # import inside it is published too, and each production entry is still a
+      # no-op rather than the whole agent
+      - run: npm run check:artifacts

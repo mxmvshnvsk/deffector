@@ -94,17 +94,18 @@ unit tests; use the full build and e2e checks when integrations or packaging are
 documentation-only change, check formatting and build the docs when site content/configuration changes.
 Report which checks ran and any failures or checks that could not run.
 
-| Command                                            | Purpose                                                                                   |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm ci`                                           | Install locked dependencies in a clean environment; the agent's prepare hook builds it.   |
-| `npm run lint`                                     | ESLint and repository-wide Prettier check.                                                |
-| `npm run typecheck`                                | Main and Solid TypeScript projects.                                                       |
-| `npm test`                                         | Vitest tests in `packages/*/test`.                                                        |
-| `npx vitest run packages/agent/test/agent.test.ts` | Example of a focused unit test run.                                                       |
-| `npm run build`                                    | Agent, shared demo model, Chrome/Edge extension, Firefox extension, standalone.           |
-| `npm run e2e`                                      | Playwright against the built extension and demos; run the build first.                    |
-| `npm run docs:build`                               | Shared demo model, live demo and VitePress site.                                          |
-| `npm run release:check`                            | Dry-run npm package contents for agent and standalone; build first for current artifacts. |
+| Command                                            | Purpose                                                                                                  |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `npm ci`                                           | Install locked dependencies in a clean environment; the agent's prepare hook builds it.                  |
+| `npm run lint`                                     | ESLint and repository-wide Prettier check.                                                               |
+| `npm run typecheck`                                | Main and Solid TypeScript projects.                                                                      |
+| `npm test`                                         | Vitest tests in `packages/*/test`.                                                                       |
+| `npx vitest run packages/agent/test/agent.test.ts` | Example of a focused unit test run.                                                                      |
+| `npm run build`                                    | Agent, shared demo model, Chrome/Edge extension, Firefox extension, standalone.                          |
+| `npm run e2e`                                      | Playwright against the built extension and demos; run the build first.                                   |
+| `npm run docs:build`                               | Shared demo model, live demo and VitePress site.                                                         |
+| `npm run release:check`                            | Dry-run npm package contents for agent and standalone; build first for current artifacts.                |
+| `npm run check:artifacts`                          | Manifest targets, relative imports and production no-op budgets of both published packages; build first. |
 
 Install Chromium once with `npx playwright install chromium` before e2e. Playwright starts/reuses the
 demo and standalone servers from `playwright.config.ts`. Its extension coverage is Chromium coverage;
