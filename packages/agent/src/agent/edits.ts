@@ -55,6 +55,8 @@ export class DevtoolsEdits {
   ) {
     const { registry, scopes, collector } = this.parts;
     const targetScopeId = this.targetScopeId(scopeId);
+    // a collected scope must not fall back to the global graph
+    if (!scopes.isAvailable(targetScopeId)) return;
     const scope = scopes.get(targetScopeId);
     const ids = Object.keys(values).filter((id) => registry.get(id)?.info.writable);
     if (!ids.length) return;
@@ -115,11 +117,13 @@ export class DevtoolsEdits {
   dispatch(scopeId: string, nodeId: string, payload: unknown) {
     const node = this.nodeOf(nodeId);
     if (!node) return;
+    const targetScopeId = this.targetScopeId(scopeId);
+    if (!this.parts.scopes.isAvailable(targetScopeId)) return;
     launchFromDevtools(this.parts.collector, {
       cause: { kind: 'devtools', action: 'dispatch' },
       targets: [node],
       params: [payload],
-      scope: this.parts.scopes.get(this.targetScopeId(scopeId)),
+      scope: this.parts.scopes.get(targetScopeId),
     });
   }
 

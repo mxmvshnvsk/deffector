@@ -20,7 +20,8 @@ export class StoreValues {
 
   readCurrent(scopeId: string, stateRefId: string): unknown {
     const stateRef = this.registry.unitsByStateRef.get(stateRefId)?.stateRef;
-    if (!stateRef) return undefined;
+    // a collected scope would otherwise read the global graph and pass it off as its own
+    if (!stateRef || !this.scopes.isAvailable(scopeId)) return undefined;
     try {
       return readScopeValue(this.scopes.get(scopeId), stateRef);
     } catch {
@@ -47,6 +48,7 @@ export class StoreValues {
 
   /** Values of all stores (derived included) of a scope, keyed by unit id. */
   allStoresNow(scopeId: string): Record<string, unknown> {
+    if (!this.scopes.isAvailable(scopeId)) return {};
     return this.readAllStores(this.scopes.get(scopeId));
   }
 
@@ -91,6 +93,8 @@ export class StoreValues {
    * time travel without an adapter, and the way back from it.
    */
   writeInPlace(scopeId: string, values: StateSnapshot) {
+    // defence in depth: `scope: null` means the global graph to effector's launch
+    if (!this.scopes.isAvailable(scopeId)) return;
     const scope = this.scopes.get(scopeId);
     const targets: Node[] = [];
     const params: unknown[] = [];

@@ -42,6 +42,9 @@ export class TimeTravel {
     const transaction = history.get(transactionId);
     if (!transaction || transaction.synthetic) return;
     const { scopeId } = transaction;
+    // the scope of this transaction was collected: writing its past in place
+    // would treat `null` as the global graph and change global state instead
+    if (!scopes.isAvailable(scopeId)) return;
     const values = storeValues.valuesAt(scopeId, transactionId);
     const isLast = history.last()?.id === transactionId;
     if (scopeId !== GLOBAL_ID && scopes.hasSwitcher() && scopes.get(scopeId)) {

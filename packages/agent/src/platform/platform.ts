@@ -31,3 +31,32 @@ export function pageLocation(): Location | undefined {
 export function pageUrl(): string | undefined {
   return pageLocation()?.href;
 }
+
+/** A box that holds its value weakly where `WeakRef` exists, strongly where it does not. */
+export interface WeakBox<Value extends object> {
+  deref(): Value | undefined;
+}
+
+const WeakRefCtor = (globalThis as { WeakRef?: typeof WeakRef }).WeakRef;
+
+/**
+ * `WeakRef` is in every environment the agent supports (Chrome/Edge 116+,
+ * Firefox 140+, Node 18+). The strong fallback only keeps older ones working,
+ * at the cost of the retention the weak box exists to avoid.
+ */
+export function weakBox<Value extends object>(value: Value): WeakBox<Value> {
+  if (WeakRefCtor) return new WeakRefCtor(value);
+  return { deref: () => value };
+}
+
+const RegistryCtor = (globalThis as { FinalizationRegistry?: typeof FinalizationRegistry })
+  .FinalizationRegistry;
+
+/** Reports a key once its object is collected; no-op where the runtime cannot tell. */
+export function createCollectionWatcher<Key>(
+  onCollected: (key: Key) => void,
+): (target: object, key: Key) => void {
+  if (!RegistryCtor) return () => {};
+  const registry = new RegistryCtor<Key>(onCollected);
+  return (target, key) => registry.register(target, key);
+}
