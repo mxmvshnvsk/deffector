@@ -51,6 +51,14 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      # a store review takes days, so a broken build must not get that far:
+      # the same checks release.yml runs before publishing to npm
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test
+
       - name: Build for Chrome, Edge and Firefox
         run: |
           npm run build -w @deffector/extension
