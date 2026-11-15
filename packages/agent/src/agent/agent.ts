@@ -149,6 +149,7 @@ export class Agent {
     const recording = new Recording({
       registry,
       history,
+      scopes: this.scopes,
       collector,
       diagnostics,
       connection,
