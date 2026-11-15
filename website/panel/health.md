@@ -90,15 +90,19 @@ update overwrites the value, and the store and its sources disagree in between.
 
 An effect rejected; the detail is the error message. Useful to spot failures that the UI swallows.
 
-### Possible infinite loop
+### More steps than deffector records
 
-**Error** · `Possible infinite loop from loopStart`
+**Info** · `loopStart ran more steps than deffector records`
 
-One transaction ran more than `maxSteps` steps (5000 by default) and its step tree was cut off.
-Synchronous cycles through events never stop and freeze the tab; cycles through stores stop once the
-value stops changing.
+One transaction passed `maxSteps` steps (5000 by default), so the rest of its step tree was not
+recorded. Store changes are still kept, so the Stores tab and time travel stay right.
 
-**Fix:** open Graph and look for a cycle that goes only through events.
+This is a recording limit, not a diagnosis: a few hundred list items with a model each, or a store
+feeding a few hundred derived ones, reach it while finishing perfectly well. A synchronous loop that
+really does not end is reported by [the emergency stop](#deffector-stopped-an-infinite-loop)
+instead, with the units it was looping through.
+
+**Fix:** raise the limit with `attachDeffector({ maxSteps })` to record the whole tree.
 
 ### deffector stopped an infinite loop
 

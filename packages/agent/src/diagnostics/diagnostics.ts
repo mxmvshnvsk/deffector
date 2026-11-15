@@ -154,10 +154,11 @@ export class Diagnostics implements FindingCounter {
     const sorted = [...this.items.values()].sort(
       (a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level],
     );
-    const hasRunaway = sorted.some(
-      (item) => item.code === 'cycle' || item.code === 'emergency-stop',
+    // the ok item claims no transaction passed the step limit, so either finding contradicts it
+    const hasStepLimitFinding = sorted.some(
+      (item) => item.code === 'recording-limit' || item.code === 'emergency-stop',
     );
-    if (hasRunaway) return sorted;
+    if (hasStepLimitFinding) return sorted;
     const texts = this.texts();
     sorted.push({
       id: 'ok:cycles',

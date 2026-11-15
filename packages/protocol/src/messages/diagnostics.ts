@@ -14,6 +14,7 @@ export interface Diagnostic {
     | 'inspector-conflict'
     | 'global-mode'
     | 'cycle'
+    | 'recording-limit'
     | 'no-adapter'
     | 'nondeterministic'
     | 'ok'
