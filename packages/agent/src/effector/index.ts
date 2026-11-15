@@ -3,6 +3,7 @@ export {
   asEffectorScope,
   asInternalScope,
   createNode,
+  allowsDerivedStoreWrites,
   effectorVersion,
   fork,
   hasDeepHooks,

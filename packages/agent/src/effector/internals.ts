@@ -129,6 +129,26 @@ export const effectorVersion: string = runtime.version || 'unknown';
 export const hasDeepHooks: boolean =
   typeof runtime.setInspector === 'function' && typeof runtime.setGraphInspector === 'function';
 
+/** The leading integer of a version string, or 0 when it cannot be read. */
+function majorOf(version: string): number {
+  const major = Number.parseInt(version, 10);
+  return Number.isFinite(major) ? major : 0;
+}
+
+/**
+ * Whether effector lets a derived store be written from outside its own
+ * computation. effector 22 only deprecated it; 23 asserts in `sample` and in
+ * `.on`, so the graph shape the derived-write check looks for cannot be built
+ * at all and running it is wasted work on every transaction.
+ *
+ * Read from the version rather than probed, unlike the hooks above: this is a
+ * documented change in effector's public API, not a private graph shape, and
+ * probing it would mean creating units that the panel would then show. A
+ * version that cannot be read keeps the check — losing a finding is worse than
+ * running one that stays quiet.
+ */
+export const allowsDerivedStoreWrites: boolean = majorOf(effectorVersion) < 23;
+
 export function installInspector(inspector: InspectorFn): void {
   runtime.setInspector(inspector);
 }
