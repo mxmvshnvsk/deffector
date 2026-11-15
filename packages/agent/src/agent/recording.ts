@@ -5,7 +5,6 @@ import type { History, RawTransaction } from '../history';
 import type { Texts } from '../i18n';
 import { canSetTimers, unrefTimer } from '../platform';
 import type { Registry } from '../registry';
-import type { Scopes } from '../scopes';
 import { DEFAULT_GRACE_MS, type WhileClosed } from './options';
 import type { PanelConnection } from './panelConnection';
 import type { StoreValues } from './storeValues';
@@ -15,7 +14,6 @@ const HOTTEST_LOGGED = 5;
 export interface RecordingParts {
   registry: Registry;
   history: History;
-  scopes: Scopes;
   collector: Collector;
   diagnostics: Diagnostics;
   connection: PanelConnection;
@@ -100,18 +98,6 @@ export class Recording {
     connection.sendTimeline();
   }
 
-  /**
-   * A transaction fell out of the buffer. If it was the last one of its scope,
-   * that scope's base snapshot has nothing left to reconstruct — unless it is
-   * the live or viewed scope, which are still asked for the state before the
-   * oldest retained transaction by revert and by a trace export.
-   */
-  private forgetUnusedBase(scopeId: string) {
-    const { history, scopes } = this.parts;
-    if (scopeId === scopes.liveId || scopeId === scopes.viewId) return;
-    history.forgetBaseOf(scopeId);
-  }
-
   readonly onTransactionsClosed = (transactions: RawTransaction[]) => {
     const { collector, history, diagnostics, connection, timeline } = this.parts;
     if (!collector.isRecording) {
@@ -119,9 +105,11 @@ export class Recording {
       for (const transaction of transactions) {
         const base = history.baseOf(transaction.scopeId);
         for (const [stateRefId, value] of transaction.deltas) base.set(stateRefId, value);
+        history.forgetBaseOf(transaction.scopeId);
       }
       return;
     }
+    let evictedScopeIds: Set<string> | undefined;
     for (const transaction of transactions) {
       if (transaction.flags.hidden) {
         // an ignore rule: keep the deltas so snapshots stay right, drop the rest
@@ -132,12 +120,17 @@ export class Recording {
       const evicted = history.push(transaction);
       if (evicted) {
         if (timeline.cursor !== null && evicted.id === timeline.cursor) timeline.cursor = null;
-        this.forgetUnusedBase(evicted.scopeId);
+        evictedScopeIds ??= new Set();
+        evictedScopeIds.add(evicted.scopeId);
       }
       if (!transaction.flags.hidden) connection.queueTransaction(transaction);
       if (transaction.flags.error || transaction.flags.derivedWrite) {
         this.parts.onSuspiciousTransaction(transaction.scopeId);
       }
+    }
+    // A later transaction in this batch can still need the base of an evicted scope.
+    if (evictedScopeIds) {
+      for (const scopeId of evictedScopeIds) history.forgetBaseOf(scopeId);
     }
     diagnostics.onTransactions(transactions);
     // the first transactions of the page: global mode and friends can be told now

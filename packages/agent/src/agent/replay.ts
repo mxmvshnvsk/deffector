@@ -209,7 +209,8 @@ export class Replayer {
       texts().unknownStep(name),
       { note, flags: { skipped: true, replay: true } },
     );
-    history.push(transaction);
+    const evicted = history.push(transaction);
+    if (evicted) history.forgetBaseOf(evicted.scopeId);
     connection.queueTransaction(transaction);
     connection.scheduleFlush();
   }

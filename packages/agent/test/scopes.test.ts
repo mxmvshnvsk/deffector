@@ -1,5 +1,5 @@
 /**
- * The agent must not keep a scope alive. A server forks one per request, so a
+ * The agent must not keep a request scope alive. A server forks one per request, so a
  * strong reference here would retain that request's whole state for the life of
  * the process. The release itself can only be observed with `--expose-gc`:
  * `node --expose-gc ./node_modules/.bin/vitest run packages/agent/test/scopes.test.ts`
@@ -141,6 +141,37 @@ describe('scope records', () => {
     teardown();
     expect(agent.scopes.hasSwitcher()).toBe(false);
     expect(agent.timeline.strategy).toBe('in-place');
+  });
+
+  it.runIf(collectGarbage)('returns to the scope created by a silent edit after GC', async () => {
+    const { agent, flush } = setup();
+    const change = createEvent<number>();
+    const $value = createStore(0, { sid: 'scope$editedValue' }).on(change, (_, value) => value);
+    const initial = fork();
+    let shown = initial;
+    agent.registerScope(initial, {
+      switcher: (next) => {
+        shown = next;
+      },
+    });
+    await allSettled(change, { scope: initial, params: 1 });
+    await allSettled(change, { scope: initial, params: 2 });
+    await flush();
+
+    const past = agent.history.transactions[0];
+    const unit = agent.registry.allInfos().find((info) => info.sid === 'scope$editedValue')!;
+    agent.edit(past.scopeId, { [unit.id]: 99 }, 'silent');
+    expect(shown.getState($value)).toBe(99);
+    agent.jump(past.id);
+    expect(shown.getState($value)).toBe(1);
+
+    await flush();
+    collectGarbage!();
+    await flush();
+    collectGarbage!();
+    agent.goLive();
+
+    expect(shown.getState($value)).toBe(99);
   });
 
   it.runIf(collectGarbage)(

@@ -7,7 +7,7 @@ export const en = {
   outOfScopeDetail: (unit: string) =>
     `${unit} was called outside of any scope while the app uses fork(). The change went to the global graph; the app reads its own scope and does not see it. Usually a call from setTimeout, a socket or a third-party callback, or a direct call instead of useUnit.`,
   outOfScopeFix: (unit: string) =>
-    `Bind it before leaving the effect: const fn = scopeBind(${unit}), or call it through useUnit. For a callback that may fire with no scope at all, scopeBind(${unit}, { safe: true })`,
+    `Bind it inside the correct scope before registering the callback: const fn = scopeBind(${unit}). If binding outside that scope, pass it explicitly: scopeBind(${unit}, { scope }). In UI components, call it through useUnit.`,
   doubleTitle: (unit: string) => `${unit} updated more than once in one transaction`,
   doubleDetail:
     'The store was recomputed twice in one propagation. effector orders combine and sample steps by declaration order, not by graph topology, so a consumer declared before its sources reads a stale value first.',

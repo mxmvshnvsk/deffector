@@ -20,7 +20,10 @@ export class History {
 
   capacity: number;
 
-  constructor(capacity = 1000) {
+  constructor(
+    capacity = 1000,
+    private readonly keepsBase: (scopeId: string) => boolean = () => false,
+  ) {
     this.capacity = capacity;
   }
 
@@ -83,7 +86,7 @@ export class History {
    * snapshot of writable store values per request it has ever seen.
    */
   forgetBaseOf(scopeId: string): boolean {
-    if (this.countByScope.has(scopeId)) return false;
+    if (this.hasTransactionsOf(scopeId) || this.keepsBase(scopeId)) return false;
     return this.baseSnapshots.delete(scopeId);
   }
 
@@ -97,7 +100,7 @@ export class History {
     stateRefIds: string[],
     readCurrent: (stateRefId: string) => unknown,
   ): StateSnapshot {
-    const values = new Map(this.baseOf(scopeId));
+    const values = new Map(this.baseSnapshots.get(scopeId));
     for (const transaction of this.transactions) {
       if (transactionId !== null && transaction.id > transactionId) break;
       if (transaction.scopeId !== scopeId || transaction.flags.skipped) continue;
@@ -119,7 +122,9 @@ export class History {
     this.transactionsById.clear();
     this.countByScope.clear();
     this.baseSnapshots.clear();
-    for (const scopeId of scopeIds) this.baseSnapshots.set(scopeId, readCurrentValues(scopeId));
+    for (const scopeId of scopeIds) {
+      if (this.keepsBase(scopeId)) this.baseSnapshots.set(scopeId, readCurrentValues(scopeId));
+    }
   }
 
   setBase(scopeId: string, values: StateSnapshot) {

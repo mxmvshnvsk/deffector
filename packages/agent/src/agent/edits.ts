@@ -109,7 +109,8 @@ export class DevtoolsEdits {
       transaction.deltas.set(stateRefId, values[id]);
       transaction.previousValues.set(stateRefId, current.get(stateRefId));
     }
-    history.push(transaction);
+    const evicted = history.push(transaction);
+    if (evicted) history.forgetBaseOf(evicted.scopeId);
     connection.queueTransaction(transaction);
     connection.scheduleFlush();
   }

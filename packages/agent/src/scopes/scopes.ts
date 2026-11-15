@@ -47,8 +47,8 @@ const DEFAULT_NAME = /^scope \d+$/;
  * A record holds its scope weakly. On a server every request forks its own
  * scope, and a strong reference here would keep that request's whole state
  * alive for as long as the process runs. Once a scope is collected its record
- * is dropped too, unless it is the live or viewed one or carries an adapter's
- * switcher — those belong to the app root and outlive any single scope.
+ * is dropped too, unless it is the live or viewed one. A provider's live
+ * scope stays alive while the provider renders a different scope.
  */
 export class Scopes {
   private readonly idsByScope = new WeakMap<Scope, string>();
@@ -68,10 +68,12 @@ export class Scopes {
 
   viewId: string | null = null;
 
+  private liveProviderScope: Scope | null = null;
+
   /** the list changed since it was last sent to the panel */
   hasUnsentChanges = true;
 
-  constructor() {
+  constructor(private readonly onInactive: (scopeId: string) => void = () => {}) {
     this.records.set(GLOBAL_ID, { id: GLOBAL_ID, name: 'global', scope: null });
   }
 
@@ -83,9 +85,31 @@ export class Scopes {
   /** A collected scope: keep the record only while something still points at it. */
   private forget(id: string) {
     const record = this.records.get(id);
-    if (!record || record.switcher || this.liveId === id || this.viewId === id) return;
+    if (!record || this.liveId === id || this.viewId === id || Scopes.scopeOf(record)) return;
     this.records.delete(id);
     this.hasUnsentChanges = true;
+  }
+
+  private retainLiveProviderScope() {
+    // The adapter may be rendering a different scope, so it might not hold the present.
+    const live = this.liveId === null ? undefined : this.records.get(this.liveId);
+    this.liveProviderScope = live?.switcher ? Scopes.scopeOf(live) : null;
+  }
+
+  private releaseInactive(id: string | null) {
+    if (id === null || id === this.liveId || id === this.viewId) return;
+    this.forget(id);
+    this.onInactive(id);
+  }
+
+  private setFocus(liveId: string | null, viewId: string | null) {
+    const previousLive = this.liveId;
+    const previousView = this.viewId;
+    this.liveId = liveId;
+    this.viewId = viewId;
+    this.retainLiveProviderScope();
+    this.releaseInactive(previousLive);
+    if (previousView !== previousLive) this.releaseInactive(previousView);
   }
 
   idOf(scope: Scope | null | undefined): string {
@@ -121,8 +145,9 @@ export class Scopes {
     const liveHasNoSwitcher =
       !this.liveId || this.liveId === GLOBAL_ID || !this.records.get(this.liveId)?.switcher;
     if (options.live !== false && liveHasNoSwitcher) {
-      this.liveId = scopeId;
-      this.viewId = scopeId;
+      this.setFocus(scopeId, scopeId);
+    } else {
+      this.retainLiveProviderScope();
     }
     this.hasUnsentChanges = true;
     return { scopeId, switcherOwner };
@@ -143,7 +168,10 @@ export class Scopes {
       delete record.switcherOwner;
       changed = true;
     }
-    if (changed) this.hasUnsentChanges = true;
+    if (changed) {
+      this.retainLiveProviderScope();
+      this.hasUnsentChanges = true;
+    }
   }
 
   /**
@@ -202,6 +230,7 @@ export class Scopes {
 
   get(id: string | null): Scope | null {
     if (id === null) return null;
+    if (id === this.liveId && this.liveProviderScope) return this.liveProviderScope;
     return Scopes.scopeOf(this.records.get(id));
   }
 
@@ -223,13 +252,13 @@ export class Scopes {
     if (!target || !scope || !switcher) return false;
     switcher(asEffectorScope(scope));
     this.copySwitcherFrom(id, viewSwitcher ? viewId : id);
-    this.viewId = id;
+    this.setFocus(this.liveId, id);
     this.hasUnsentChanges = true;
     return true;
   }
 
   makeLive(id: string) {
-    this.liveId = id;
+    this.setFocus(id, this.viewId);
     const record = this.records.get(id);
     if (record) delete record.branch;
     this.hasUnsentChanges = true;

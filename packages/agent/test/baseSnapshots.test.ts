@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { allSettled, createEvent, createStore, fork } from 'effector';
-import { createMemoryTransportPair } from '@deffector/protocol';
+import { createMemoryTransportPair, decode } from '@deffector/protocol';
 import { Agent } from '../src/agent';
 
 const sleep = (ms: number) =>
@@ -25,7 +25,7 @@ function setup(maxTransactions: number) {
   const pair = createMemoryTransportPair();
   agent.connect(pair.agent);
   pair.panel.send({ type: 'connect', locale: 'en' });
-  return { agent, flush: () => sleep(60) };
+  return { agent, panel: pair.panel, flush: () => sleep(60) };
 }
 
 /** base snapshots the agent is holding, by scope id */
@@ -45,6 +45,42 @@ describe('base snapshots of scopes that are done', () => {
     // one per scope that still has a retained transaction, plus the live one
     expect(agent.history.transactions.length).toBeLessThanOrEqual(2);
     expect(baseCount(agent)).toBeLessThanOrEqual(3);
+  });
+
+  it('drops request snapshots with no retained transactions while recording is off', async () => {
+    const { agent, panel, flush } = setup(2);
+    panel.send({ type: 'set-recording', on: false });
+
+    for (let i = 0; i < 20; i += 1) {
+      await allSettled(requestStarted, { scope: fork(), params: i });
+    }
+    await flush();
+
+    expect(agent.history.transactions).toHaveLength(0);
+    expect(baseCount(agent)).toBe(1);
+  });
+
+  it('preserves the base when a scope is evicted and reappears in the same batch', async () => {
+    const { agent, flush } = setup(1);
+    const live = fork();
+    agent.registerScope(live, { switcher: () => {} });
+    const request = fork();
+    await allSettled(requestStarted, { scope: request, params: 1 });
+    await flush();
+
+    // Both launches finish before the collector closes and records their transactions.
+    await Promise.all([
+      allSettled(requestStarted, { scope: fork(), params: 7 }),
+      allSettled(requestStarted, { scope: request, params: 2 }),
+    ]);
+    await flush();
+
+    const transaction = agent.history.transactions.at(-1)!;
+    const unit = agent.registry.allInfos().find((info) => info.sid === 'base$payload')!;
+    expect(request.getState($payload)).toMatchObject({ n: 2 });
+    expect(decode(agent.traces.export(transaction.scopeId).initial[unit.id])).toMatchObject({
+      n: 1,
+    });
   });
 
   it('keeps the base while a transaction of that scope is retained', async () => {
@@ -84,16 +120,17 @@ describe('base snapshots of scopes that are done', () => {
 
     expect(agent.history.hasTransactionsOf(liveId)).toBe(false);
     // revert and a trace export still ask the live scope for the state before
-    // the oldest retained transaction, so Recording spares it
+    // the oldest retained transaction, so History spares it
     expect(bases(agent).has(liveId)).toBe(true);
   });
 
-  it('forgets the base of an abandoned time-travel branch', async () => {
+  it('forgets abandoned branches when jumping within the past and on return to live', async () => {
     const { agent, flush } = setup(10);
     const scope = fork();
     agent.registerScope(scope, { name: 'client', switcher: () => {} });
     await allSettled(requestStarted, { scope, params: 1 });
     await allSettled(requestStarted, { scope, params: 2 });
+    await allSettled(requestStarted, { scope, params: 3 });
     await flush();
 
     const past = agent.history.transactions[0];
@@ -103,8 +140,14 @@ describe('base snapshots of scopes that are done', () => {
     expect(branchId).not.toBe(agent.scopes.liveId);
     expect(bases(agent).has(branchId)).toBe(true);
 
+    agent.jump(agent.history.transactions[1].id);
+    const secondBranchId = agent.scopes.viewId!;
+    expect(secondBranchId).not.toBe(branchId);
+    expect(bases(agent).has(branchId)).toBe(false);
+    expect(bases(agent).has(secondBranchId)).toBe(true);
+
     agent.jump(null);
     await flush();
-    expect(bases(agent).has(branchId)).toBe(false);
+    expect(bases(agent).has(secondBranchId)).toBe(false);
   });
 });

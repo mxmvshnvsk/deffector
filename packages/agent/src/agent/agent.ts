@@ -53,7 +53,7 @@ function defaultAppName(): string {
 export class Agent {
   readonly registry: Registry;
 
-  readonly scopes = new Scopes();
+  readonly scopes = new Scopes((scopeId) => this.history.forgetBaseOf(scopeId));
 
   readonly history: History;
 
@@ -114,7 +114,10 @@ export class Agent {
       build: options.build,
     };
     const registry = new Registry(() => this.collector.elapsed());
-    const history = new History(options.maxTransactions ?? DEFAULT_MAX_TRANSACTIONS);
+    const history = new History(
+      options.maxTransactions ?? DEFAULT_MAX_TRANSACTIONS,
+      (scopeId) => scopeId === GLOBAL_ID || scopeId === scopes.liveId || scopeId === scopes.viewId,
+    );
     const collector = new Collector(registry, scopes, history, {
       onClose: (transactions) => this.recording.onTransactionsClosed(transactions),
       onInternalError,
@@ -149,7 +152,6 @@ export class Agent {
     const recording = new Recording({
       registry,
       history,
-      scopes: this.scopes,
       collector,
       diagnostics,
       connection,
